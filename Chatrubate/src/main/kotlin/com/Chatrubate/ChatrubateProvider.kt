@@ -7,10 +7,10 @@ import com.lagradost.cloudstream3.utils.*
 
 class ChatrubateProvider : MainAPI() {
     override var mainUrl              = "https://chaturbate.com"
-    override var name                 = "Chatrubate" // Viết đúng chính tả là Chaturbate cơ mà ông lỡ đặt class thế rồi thì cứ để vậy =))
+    override var name                 = "Chatrubate" 
     override val hasMainPage          = true
     override var lang                 = "en"
-    override val hasDownloadSupport   = false // Live stream thì tải gì ông ơi, tắt đi cho đỡ lỗi
+    override val hasDownloadSupport   = false 
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
@@ -89,21 +89,21 @@ class ChatrubateProvider : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         try {
-            val doc = app.get(data).document
-            // Web nó hay giấu JSON trong script, mình bới lại cho chuẩn
-            val script = doc.select("script").find { item -> item.html().contains("window.initialRoomDossier") } ?: return false
+            // Lấy thẳng text raw HTML thay vì dùng Jsoup Document, để mã script không bị xào nấu mất form
+            val html = app.get(data).text
             
-            val json = script.html().substringAfter("window.initialRoomDossier = \"").substringBefore(";").unescapeUnicode()
+            // Bọn nó hay escape kiểu "https:\/\/bcp.chaturbate.com\/...", mình replace hết để về link sạch
+            val cleanHtml = html.replace("\\/", "/")
             
-            // Regex bắt link m3u8 cứng cáp hơn một chút
-            val m3u8Url = """"hls_source"\s*:\s*"(.*?.m3u8)"""".toRegex(RegexOption.IGNORE_CASE).find(json)?.groups?.get(1)?.value ?: return false
+            // Quét thẳng tay tóm ngay thằng m3u8 trong đống bùi nhùi đó
+            val m3u8Regex = """(https?://[^"'\s]+\.m3u8)""".toRegex(RegexOption.IGNORE_CASE)
+            val m3u8Url = m3u8Regex.find(cleanHtml)?.groups?.get(1)?.value ?: return false
             
-            // Dùng ExtractorLink chuẩn của API hiện tại
             callback.invoke(
                 ExtractorLink(
                     source = name,
                     name = "Live Stream",
-                    url = m3u8Url.replace("\\", ""), // Xóa gạch chéo ngược nếu có
+                    url = m3u8Url,
                     referer = "$mainUrl/",
                     quality = Qualities.Unknown.value,
                     isM3u8 = true
@@ -129,8 +129,4 @@ class ChatrubateProvider : MainAPI() {
         @JsonProperty("total_count")     val total_count: String          = "",
         @JsonProperty("rooms")           val rooms: List<Room> = arrayListOf()
     )
-}
-
-fun String.unescapeUnicode() = replace("\\\\u([0-9A-Fa-f]{4})".toRegex()) {
-    String(Character.toChars(it.groupValues[1].toInt(radix = 16)))
 }
